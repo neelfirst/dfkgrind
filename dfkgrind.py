@@ -58,6 +58,7 @@ def main(hero_id):
     sys.exit(1)
 
   quest = Quest(rpc_address=RPC_ADDRESS, logger=logger)
+
   quest.start_quest(quest_address=fishing.QUEST_CONTRACT_ADDRESS, \
                     hero_ids=[hero_id], \
                     attempts=1, \
@@ -68,11 +69,9 @@ def main(hero_id):
 
   quest_info = quest_utils.human_readable_quest(quest.get_hero_quest(hero_id))
 
-  print("Waiting " + str(quest_info['completeAtTime'] - time.time()) + " secs to complete quest " + str(quest_info))
-  while time.time() < quest_info['completeAtTime']:
-    time.sleep(2)
+  time.sleep(attempts * 60) # fudge value: complete time is unreliable
 
-  tx_receipt = quest.complete_quest(hero_id=[hero_id], \
+  tx_receipt = quest.complete_quest(hero_id=hero_id, \
                                     private_key=(Account.decrypt(encrypted_key, p)), \
                                     nonce=w3.eth.getTransactionCount(account_address), \
                                     gas_price_gwei=35, \
