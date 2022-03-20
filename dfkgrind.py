@@ -59,7 +59,7 @@ def main(hero_id):
 
   quest = Quest(rpc_address=RPC_ADDRESS, logger=logger)
   quest.start_quest(quest_address=fishing.QUEST_CONTRACT_ADDRESS, \
-                    hero_ids=hero_id, \
+                    hero_ids=[hero_id], \
                     attempts=1, \
                     private_key=(Account.decrypt(encrypted_key, p)), \
                     nonce=w3.eth.getTransactionCount(account_address), \
@@ -72,7 +72,7 @@ def main(hero_id):
   while time.time() < quest_info['completeAtTime']:
     time.sleep(2)
 
-  tx_receipt = quest.complete_quest(hero_ids=hero_id, \
+  tx_receipt = quest.complete_quest(hero_id=[hero_id], \
                                     private_key=(Account.decrypt(encrypted_key, p)), \
                                     nonce=w3.eth.getTransactionCount(account_address), \
                                     gas_price_gwei=35, \
@@ -86,4 +86,4 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='Grinder. Enter hero ID')
   parser.add_argument('--hero', help='input hero id', required=True)
   args = vars(parser.parse_args())
-  main(args['hero'])
+  main(int(args['hero']))
