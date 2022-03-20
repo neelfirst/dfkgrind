@@ -61,11 +61,10 @@ def main(hero_id):
   quest.start_quest(quest_address=fishing.QUEST_CONTRACT_ADDRESS, \
                     hero_ids=hero_id, \
                     attempts=1, \
-                    private_key=str(Account.decrypt(encrypted_key, p)), \
+                    private_key=(Account.decrypt(encrypted_key, p)), \
                     nonce=w3.eth.getTransactionCount(account_address), \
                     gas_price_gwei=35, \
-                    tx_timeout=30, \
-                    rpc_address=RPC_ADDRESS)
+                    tx_timeout_seconds=30)
 
   quest_info = quest_utils.human_readable_quest(quest.get_hero_quest(hero_id))
 
@@ -74,11 +73,10 @@ def main(hero_id):
     time.sleep(2)
 
   tx_receipt = quest.complete_quest(hero_ids=hero_id, \
-                                    private_key=str(Account.decrypt(encrypted_key, p)), \
+                                    private_key=(Account.decrypt(encrypted_key, p)), \
                                     nonce=w3.eth.getTransactionCount(account_address), \
                                     gas_price_gwei=35, \
-                                    tx_timeout=30, \
-                                    rpc_address=RPC_ADDRESS)
+                                    tx_timeout_seconds=30)
   quest_result = quest.parse_complete_quest_receipt(tx_receipt)
   print("Rewards: " + str(quest_result))
 
