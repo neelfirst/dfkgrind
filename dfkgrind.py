@@ -69,7 +69,7 @@ def main(hero_id):
 
   quest_info = quest_utils.human_readable_quest(quest.get_hero_quest(hero_id))
 
-  time.sleep(attempts * 60) # fudge value: complete time is unreliable
+  time.sleep(1 * 35) # fudge value: complete time is unreliable
 
   tx_receipt = quest.complete_quest(hero_id=hero_id, \
                                     private_key=(Account.decrypt(encrypted_key, p)), \
