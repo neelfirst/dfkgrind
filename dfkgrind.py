@@ -5,41 +5,22 @@ from pathlib import Path
 from eth_account import Account
 from web3 import Web3
 
+import json, argparse, logging
+from time import sleep
+from sys import exit
+
 from dfk.quest import foraging, fishing, mining
 from dfk.quest.quest import Quest
 from dfk.quest.utils import utils as quest_utils
 
-import json, argparse, sys, time
-
-import logging
 LOG_FORMAT = '%(asctime)s|%(name)s|%(levelname)s: %(message)s'
-LOGGER = logging.getLogger("DFK-quest")
+LOGGER = logging.getLogger('dfkgrind')
 LOGGER.setLevel(logging.DEBUG)
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=sys.stdout)
 
 DEFAULT_KEYFILE_LOCATION = "config/keystore.json"
 DEFAULT_RPC_SERVER = "https://api.fuzz.fi"
 DEFAULT_QUEST_ATTEMPTS = 5 # fi/fo only
-
-def make_new_keyfile(path_obj):
-  x = getpass(prompt='Paste private key: ')
-  y = getpass(prompt='Enter passphrase: ')
-  z = Account.encrypt(x,y)
-  with path_obj.open('w') as f:
-    f.write(json.dumps(z))
-  LOGGER.info('wrote encrypted keystore to ' + str(path_obj))
-  return z
-
-def manage_keyfile(keyfile_path):
-  key = Path(keyfile_path)
-  if key.exists():
-    LOGGER.info('encrypted keystore file found, loading...')
-    with key.open() as f:
-      encrypted_key = json.loads(f.read())
-  else:
-    LOGGER.info('keystore not found, making new key. get your MM private key...')
-    encrypted_key = make_new_keyfile(key)
-  return encrypted_key
 
 def get_quest_address(quest_type):
   if quest_type == 'fishing':
@@ -65,7 +46,7 @@ def run_quest():
 
   quest_info = quest_utils.human_readable_quest(quest.get_hero_quest(hero_id))
 
-  time.sleep(DEFAULT_QUEST_ATTEMPTS * 35) # fudge value: complete time is unreliable
+  sleep(DEFAULT_QUEST_ATTEMPTS * 35) # fudge value: complete time is unreliable
 
   tx_receipt = quest.complete_quest(hero_id=hero_id, \
                                     private_key=(Account.decrypt(encrypted_key, p)), \
@@ -77,24 +58,19 @@ def run_quest():
   return
 
 def main(hero_id, quest_type, keyfile_path=DEFAULT_KEYFILE_LOCATION, rpc=DEFAULT_RPC_SERVER):
-  encrypted_key = manage_keyfile(keyfile_path)
+  from . import keys
+  encrypted_key = keys.manage_keyfile(keyfile_path)
   LOGGER.info('loaded encrypted key')
 
-  p = getpass(prompt='Enter passphrase to decrypt and use: ')
-  account_address = None
-  try:
-    account_address = w3.eth.account.privateKeyToAccount(Account.decrypt(encrypted_key, p)).address
-  except:
-    LOGGER.error("Bad passphrase. Bailing out.")
-    sys.exit(1)
+  account_address = get_address(encrypted_key)
   if not account_address:
     LOGGER.error("Could not decode checksum-enabled account address. Bailing out.")
-    sys.exit(1)
+    exit(1)
 
   quest_address = get_quest_address(quest_type)
   if not quest_address:
     LOGGER.error("Unrecognized quest type " + quest_type + " : Bailing out.")
-    sys.exit(1)
+    exit(1)
 
   run_quest()
   use_item()
