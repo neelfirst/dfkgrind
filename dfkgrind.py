@@ -33,23 +33,29 @@ def get_quest_address(quest_type):
     quest_address = None
   return quest_address
 
-def run_quest(w3, quest_address, hero_id, encrypted_key, p, addr):
+def run_quest(w3, quest_address, quest_type, hero_id, encrypted_key, p, addr):
   private_key = Account.decrypt(encrypted_key, p)
   quest = Quest(rpc_address=DEFAULT_RPC_SERVER, logger=LOGGER)
   quest.start_quest(quest_address=quest_address, \
                     hero_ids=[hero_id], \
                     attempts=DEFAULT_QUEST_ATTEMPTS, \
-                    private_key=(private_key), \
+                    private_key=private_key, \
                     nonce=w3.eth.getTransactionCount(addr), \
                     gas_price_gwei=35, \
                     tx_timeout_seconds=30)
 
   quest_info = quest_utils.human_readable_quest(quest.get_hero_quest(hero_id))
 
-  sleep(DEFAULT_QUEST_ATTEMPTS * 35) # fudge value: complete time is unreliable
+  if quest_type == 'mining':
+    LOGGER.info("sleeping for 250 minutes")
+    sleep(25 * 10 * 60)
+  else: # quest_type == 'fishing' or 'foraging'
+    sleep_time = DEFAULT_QUEST_ATTEMPTS * 35 # some overage built in
+    LOGGER.info("sleeping for " + sleep_time + " seconds")
+    sleep(sleep_time)
 
   tx_receipt = quest.complete_quest(hero_id=hero_id, \
-                                    private_key=(private_key), \
+                                    private_key=private_key, \
                                     nonce=w3.eth.getTransactionCount(addr), \
                                     gas_price_gwei=35, \
                                     tx_timeout_seconds=30)
@@ -103,8 +109,9 @@ def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION, rpc=DEFAULT_RPC
     LOGGER.error("Unrecognized quest type " + quest_type + " : Bailing out.")
     exit(1)
 
-  run_quest(w3, quest_address, hero_id, encrypted_key, p, addr)
-  use_item(w3, hero_id, encrypted_key, p)
+  while True:
+    run_quest(w3, quest_address, quest_type, hero_id, encrypted_key, p, addr)
+    use_item(w3, hero_id, encrypted_key, p)
 
   return
 
