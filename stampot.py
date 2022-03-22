@@ -38,6 +38,9 @@ ABI = '''
       '''
 KEYFILE_LOCATION = "config/keystore.json"
 
+def block_explorer_link(txid):
+  return 'https://explorer.harmony.one/tx/' + str(txid)
+
 def make_new_keyfile(path_obj):
   x = getpass(prompt='Paste private key: ')
   y = getpass(prompt='Enter passphrase: ')
@@ -101,6 +104,8 @@ def main(hero_id=134738):
   if not account_address:
     print("Could not decode checksum-enabled account address. Bailing out.")
     sys.exit(1)
+
+  use_item(hero_id, Account.decrypt(encrypted_key, p))
 
 if __name__ == '__main__':
   main()
