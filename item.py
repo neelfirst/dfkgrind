@@ -39,8 +39,7 @@ ABI = \
 def block_explorer_link(txid):
   return 'https://explorer.harmony.one/tx/' + str(txid)
 
-def use_item(hero_id, private_key, gas_price_gwei=35, tx_timeout_seconds=30, rpc_address='https://api.fuzz.fi'):
-  w3 = Web3(Web3.HTTPProvider(rpc_address))
+def use_item(w3, hero_id, private_key, gas_price_gwei=35, tx_timeout_seconds=30, rpc_address='https://api.fuzz.fi'):
   account = w3.eth.account.privateKeyToAccount(private_key)
   w3.eth.default_account = account.address
   nonce = w3.eth.getTransactionCount(account.address)

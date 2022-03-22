@@ -11,6 +11,8 @@ from dfk.quest import foraging, fishing, mining
 from dfk.quest.quest import Quest
 from dfk.quest.utils import utils as quest_utils
 
+import keys, item
+
 LOG_FORMAT = '%(asctime)s|%(name)s|%(levelname)s: %(message)s'
 LOGGER = logging.getLogger('dfkgrind')
 LOGGER.setLevel(logging.DEBUG)
@@ -31,14 +33,14 @@ def get_quest_address(quest_type):
     quest_address = None
   return quest_address
 
-def run_quest(w3, quest_address, hero_id, encrypted_key, p, account_address):
-  w3 = Web3(Web3.HTTPProvider(DEFAULT_RPC_SERVER))
+def run_quest(w3, quest_address, hero_id, encrypted_key, p, addr):
+  private_key = Account.decrypt(encrypted_key, p)
   quest = Quest(rpc_address=DEFAULT_RPC_SERVER, logger=LOGGER)
   quest.start_quest(quest_address=quest_address, \
                     hero_ids=[hero_id], \
                     attempts=DEFAULT_QUEST_ATTEMPTS, \
-                    private_key=(Account.decrypt(encrypted_key, p)), \
-                    nonce=w3.eth.getTransactionCount(account_address), \
+                    private_key=(private_key), \
+                    nonce=w3.eth.getTransactionCount(addr), \
                     gas_price_gwei=35, \
                     tx_timeout_seconds=30)
 
@@ -47,25 +49,53 @@ def run_quest(w3, quest_address, hero_id, encrypted_key, p, account_address):
   sleep(DEFAULT_QUEST_ATTEMPTS * 35) # fudge value: complete time is unreliable
 
   tx_receipt = quest.complete_quest(hero_id=hero_id, \
-                                    private_key=(Account.decrypt(encrypted_key, p)), \
-                                    nonce=w3.eth.getTransactionCount(account_address), \
+                                    private_key=(private_key), \
+                                    nonce=w3.eth.getTransactionCount(addr), \
                                     gas_price_gwei=35, \
                                     tx_timeout_seconds=30)
   quest_result = quest.parse_complete_quest_receipt(tx_receipt)
   LOGGER.info("Rewards: " + str(quest_result))
-  return
+  del p, private_key
+  return tx_receipt
 
-def main(hero_id, quest_type, keyfile_path=DEFAULT_KEYFILE_LOCATION, rpc=DEFAULT_RPC_SERVER):
-  w3 = Web3(Web3.HTTPProvider(DEFAULT_RPC_SERVER))
+def use_item(w3, hero_id, encrypted_key, p, gas_price_gwei=35, tx_timeout_seconds=30, rpc_address='https://api.fuzz.fi'):
+  private_key = Account.decrypt(encrypted_key, p)
+  account = w3.eth.account.privateKeyToAccount(private_key)
+  w3.eth.default_account = account.address
+  nonce = w3.eth.getTransactionCount(account.address)
 
-  from keys import manage_keyfile
-  encrypted_key = manage_keyfile(keyfile_path)
+  contract_address = Web3.toChecksumAddress(item.CONTRACT_ADDRESS)
+  contract = w3.eth.contract(contract_address, abi=item.ABI)
+
+  tx = contract.functions.consumeItem(item.DFKSTMNPTN_ADDRESS, hero_id).buildTransaction(
+    {'gasPrice': w3.toWei(gas_price_gwei, 'gwei'), 'nonce': nonce})
+
+  LOGGER.info("Signing transaction")
+  signed_tx = w3.eth.account.sign_transaction(tx, private_key=private_key)
+
+  LOGGER.info("Sending transaction " + str(tx))
+  ret = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+  LOGGER.info("Transaction successfully sent !")
+
+  LOGGER.info("Waiting for transaction " + str(signed_tx.hash.hex()) + " to be mined")
+  tx_receipt = w3.eth.wait_for_transaction_receipt(transaction_hash=signed_tx.hash, \
+                                                   timeout=tx_timeout_seconds, \
+                                                   poll_latency=3)
+  LOGGER.info("Transaction mined !")
+  del p, private_key
+  return tx_receipt
+
+def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION, rpc=DEFAULT_RPC_SERVER):
+  w3 = Web3(Web3.HTTPProvider(rpc))
+
+  encrypted_key = keys.manage_keyfile(key_path)
   LOGGER.info('loaded encrypted key')
 
-  from keys import get_address
-  account_address, p = get_address(encrypted_key, w3)
-  if not account_address:
-    LOGGER.error("Could not decode checksum-enabled account address. Bailing out.")
+  p = keys.get_password(w3, encrypted_key)
+
+  addr = keys.get_address(w3, encrypted_key, p)
+  if not addr:
+    LOGGER.error("Invalid checksum-enabled account address. Bailing out.")
     exit(1)
 
   quest_address = get_quest_address(quest_type)
@@ -73,8 +103,8 @@ def main(hero_id, quest_type, keyfile_path=DEFAULT_KEYFILE_LOCATION, rpc=DEFAULT
     LOGGER.error("Unrecognized quest type " + quest_type + " : Bailing out.")
     exit(1)
 
-#  run_quest()
-#  use_item()
+  run_quest(w3, quest_address, hero_id, encrypted_key, p, addr)
+  use_item(w3, hero_id, encrypted_key, p)
 
   return
 
@@ -95,3 +125,5 @@ if __name__ == '__main__':
       main(int(args['hero']), args['quest'], rpc=args['rpc'])
     else:
       main(int(args['hero']), args['quest'])
+
+
