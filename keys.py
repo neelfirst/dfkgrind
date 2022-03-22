@@ -58,4 +58,4 @@ def get_address(encrypted_key, w3):
       logger.error("Could not decode checksum-enabled account address. Bailing out.")
     except:
       pass
-  return account_address
+  return account_address, p

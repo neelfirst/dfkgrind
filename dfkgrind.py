@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-from getpass import getpass
-from pathlib import Path
 from eth_account import Account
 from web3 import Web3
 
@@ -33,7 +31,7 @@ def get_quest_address(quest_type):
     quest_address = None
   return quest_address
 
-def run_quest():
+def run_quest(w3, quest_address, hero_id, encrypted_key, p, account_address):
   w3 = Web3(Web3.HTTPProvider(DEFAULT_RPC_SERVER))
   quest = Quest(rpc_address=DEFAULT_RPC_SERVER, logger=LOGGER)
   quest.start_quest(quest_address=quest_address, \
@@ -65,7 +63,7 @@ def main(hero_id, quest_type, keyfile_path=DEFAULT_KEYFILE_LOCATION, rpc=DEFAULT
   LOGGER.info('loaded encrypted key')
 
   from keys import get_address
-  account_address = get_address(encrypted_key, w3)
+  account_address, p = get_address(encrypted_key, w3)
   if not account_address:
     LOGGER.error("Could not decode checksum-enabled account address. Bailing out.")
     exit(1)
