@@ -3,6 +3,7 @@
 from getpass import getpass
 from pathlib import Path
 from eth_account import Account
+from web3 import Web3
 
 import json, logging
 
@@ -40,7 +41,7 @@ def manage_keyfile(keyfile_path):
     encrypted_key = make_new_keyfile(key)
   return encrypted_key
 
-def get_address(encrypted_key):
+def get_address(encrypted_key, w3):
   p = getpass(prompt='Enter passphrase to decrypt and use: ')
   account_address = None
   try:

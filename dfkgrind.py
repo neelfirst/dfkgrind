@@ -7,7 +7,7 @@ from web3 import Web3
 
 import json, argparse, logging
 from time import sleep
-from sys import exit
+from sys import exit, stdout
 
 from dfk.quest import foraging, fishing, mining
 from dfk.quest.quest import Quest
@@ -16,7 +16,7 @@ from dfk.quest.utils import utils as quest_utils
 LOG_FORMAT = '%(asctime)s|%(name)s|%(levelname)s: %(message)s'
 LOGGER = logging.getLogger('dfkgrind')
 LOGGER.setLevel(logging.DEBUG)
-logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=sys.stdout)
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=stdout)
 
 DEFAULT_KEYFILE_LOCATION = "config/keystore.json"
 DEFAULT_RPC_SERVER = "https://api.fuzz.fi"
@@ -34,8 +34,8 @@ def get_quest_address(quest_type):
   return quest_address
 
 def run_quest():
-  w3 = Web3(Web3.HTTPProvider(RPC_ADDRESS))
-  quest = Quest(rpc_address=RPC_ADDRESS, logger=LOGGER)
+  w3 = Web3(Web3.HTTPProvider(DEFAULT_RPC_SERVER))
+  quest = Quest(rpc_address=DEFAULT_RPC_SERVER, logger=LOGGER)
   quest.start_quest(quest_address=quest_address, \
                     hero_ids=[hero_id], \
                     attempts=DEFAULT_QUEST_ATTEMPTS, \
@@ -58,11 +58,14 @@ def run_quest():
   return
 
 def main(hero_id, quest_type, keyfile_path=DEFAULT_KEYFILE_LOCATION, rpc=DEFAULT_RPC_SERVER):
-  from . import keys
-  encrypted_key = keys.manage_keyfile(keyfile_path)
+  w3 = Web3(Web3.HTTPProvider(DEFAULT_RPC_SERVER))
+
+  from keys import manage_keyfile
+  encrypted_key = manage_keyfile(keyfile_path)
   LOGGER.info('loaded encrypted key')
 
-  account_address = get_address(encrypted_key)
+  from keys import get_address
+  account_address = get_address(encrypted_key, w3)
   if not account_address:
     LOGGER.error("Could not decode checksum-enabled account address. Bailing out.")
     exit(1)
@@ -72,16 +75,25 @@ def main(hero_id, quest_type, keyfile_path=DEFAULT_KEYFILE_LOCATION, rpc=DEFAULT
     LOGGER.error("Unrecognized quest type " + quest_type + " : Bailing out.")
     exit(1)
 
-  run_quest()
-  use_item()
+#  run_quest()
+#  use_item()
 
   return
 
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser(description='Grinder. Enter hero ID')
+  parser = argparse.ArgumentParser(description='Welcome to the grinder...')
   parser.add_argument('--hero', help='input (exactly one) hero id', required=True)
   parser.add_argument('--quest', help='choose one: [fishing, foraging]', required=True)
   parser.add_argument('--keyfile', help='relative path to keyfile (default: config/keystore.json)', required=False)
   parser.add_argument('--rpc', help='RPC server to use for calls (default: https://api.fuzz.fi)', required=False)
   args = vars(parser.parse_args())
-  main(int(args['hero']), args['quest'], args['keyfile'], args['rpc'])
+  if (args['keyfile']):
+    if (args['rpc']):
+      main(int(args['hero']), args['quest'], args['keyfile'], args['rpc'])
+    else:
+      main(int(args['hero']), args['quest'], args['keyfile'])
+  else:
+    if (args['rpc']):
+      main(int(args['hero']), args['quest'], rpc=args['rpc'])
+    else:
+      main(int(args['hero']), args['quest'])
