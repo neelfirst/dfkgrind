@@ -10,6 +10,7 @@ from sys import exit, stdout
 from dfk.quest import foraging, fishing, mining
 from dfk.quest.quest import Quest
 from dfk.quest.utils import utils as quest_utils
+import dfk.hero.hero as heroes
 
 import keys, item
 
@@ -21,6 +22,7 @@ logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=stdout)
 DEFAULT_KEYFILE_LOCATION = "config/keystore.json"
 DEFAULT_RPC_SERVER = "https://api.fuzz.fi"
 DEFAULT_QUEST_ATTEMPTS = 5 # fi/fo only
+DEFAULT_GAS_PRICE = 100 # gwei
 
 def get_quest_address(quest_type):
   if quest_type == 'fishing':
@@ -36,15 +38,21 @@ def get_quest_address(quest_type):
 def run_quest(w3, quest_address, quest_type, hero_id, encrypted_key, p, addr):
   private_key = Account.decrypt(encrypted_key, p)
   quest = Quest(rpc_address=DEFAULT_RPC_SERVER, logger=LOGGER)
-  quest.start_quest(quest_address=quest_address, \
-                    hero_ids=[hero_id], \
-                    attempts=DEFAULT_QUEST_ATTEMPTS, \
-                    private_key=private_key, \
-                    nonce=w3.eth.getTransactionCount(addr), \
-                    gas_price_gwei=35, \
-                    tx_timeout_seconds=30)
-
-  quest_info = quest_utils.human_readable_quest(quest.get_hero_quest(hero_id))
+  success = False
+  while success is False:
+    try:
+      quest.start_quest(quest_address=quest_address, \
+                        hero_ids=[hero_id], \
+                        attempts=DEFAULT_QUEST_ATTEMPTS, \
+                        private_key=private_key, \
+                        nonce=w3.eth.getTransactionCount(addr), \
+                        gas_price_gwei=DEFAULT_GAS_PRICE, \
+                        tx_timeout_seconds=30)
+      success = True
+    except:
+      LOGGER.warn("Starting quest failed! Hero is inactive. Retrying in 3 seconds.")
+      sleep(3)
+      success = False
 
   if quest_type == 'mining':
     LOGGER.info("sleeping for 250 minutes")
@@ -54,17 +62,27 @@ def run_quest(w3, quest_address, quest_type, hero_id, encrypted_key, p, addr):
     LOGGER.info("sleeping for " + sleep_time + " seconds")
     sleep(sleep_time)
 
-  tx_receipt = quest.complete_quest(hero_id=hero_id, \
-                                    private_key=private_key, \
-                                    nonce=w3.eth.getTransactionCount(addr), \
-                                    gas_price_gwei=35, \
-                                    tx_timeout_seconds=30)
-  quest_result = quest.parse_complete_quest_receipt(tx_receipt)
-  LOGGER.info("Rewards: " + str(quest_result))
+  quest_result = None
+  while quest_result is None:
+    try:
+      tx_receipt = quest.complete_quest(hero_id=hero_id, \
+                                        private_key=private_key, \
+                                        nonce=w3.eth.getTransactionCount(addr), \
+                                        gas_price_gwei=DEFAULT_GAS_PRICE, \
+                                        tx_timeout_seconds=30)
+      quest_result = quest.parse_complete_quest_receipt(tx_receipt)
+      LOGGER.info("Rewards: " + str(quest_result))
+    except:
+      LOGGER.warn("Completing quest failed! Hero is stuck. Retrying in 3 seconds.")
+      sleep(3)
+      quest_result = None
   del p, private_key
   return tx_receipt
 
-def use_item(w3, hero_id, encrypted_key, p, gas_price_gwei=35, tx_timeout_seconds=30, rpc_address='https://api.fuzz.fi'):
+def use_item(w3, hero_id, encrypted_key, p, \
+            gas_price_gwei=DEFAULT_GAS_PRICE, \
+            tx_timeout_seconds=30, \
+            rpc_address=DEFAULT_RPC_SERVER):
   private_key = Account.decrypt(encrypted_key, p)
   account = w3.eth.account.privateKeyToAccount(private_key)
   w3.eth.default_account = account.address
