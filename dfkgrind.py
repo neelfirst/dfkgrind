@@ -94,18 +94,33 @@ def use_item(w3, hero_id, encrypted_key, p, \
   tx = contract.functions.consumeItem(item.DFKSTMNPTN_ADDRESS, hero_id).buildTransaction(
     {'gasPrice': w3.toWei(gas_price_gwei, 'gwei'), 'nonce': nonce})
 
-  LOGGER.info("Signing transaction")
-  signed_tx = w3.eth.account.sign_transaction(tx, private_key=private_key)
+  ret = None
+  while ret is None:
+    try:
+      LOGGER.info("Signing transaction")
+      signed_tx = w3.eth.account.sign_transaction(tx, private_key=private_key)
 
-  LOGGER.info("Sending transaction " + str(tx))
-  ret = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-  LOGGER.info("Transaction successfully sent !")
+      LOGGER.info("Sending transaction " + str(tx))
+      ret = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+      LOGGER.info("Transaction successfully sent !")
+    except:
+      LOGGER.warn("Failed to send dfkstmnptn usage tx. Retrying in 3 seconds")
+      sleep(3)
+      ret = None
 
-  LOGGER.info("Waiting for transaction " + str(signed_tx.hash.hex()) + " to be mined")
-  tx_receipt = w3.eth.wait_for_transaction_receipt(transaction_hash=signed_tx.hash, \
-                                                   timeout=tx_timeout_seconds, \
-                                                   poll_latency=3)
-  LOGGER.info("Transaction mined !")
+  tx_receipt = None
+  while tx_receipt is None:
+    try:
+      LOGGER.info("Waiting for transaction " + str(signed_tx.hash.hex()) + " to be mined")
+      tx_receipt = w3.eth.wait_for_transaction_receipt(transaction_hash=signed_tx.hash, \
+                                                       timeout=tx_timeout_seconds, \
+                                                       poll_latency=3)
+      LOGGER.info("Transaction mined !")
+    except:
+      LOGGER.warn("Failed to confirm dfkstmnptn usage. Retrying in 3 seconds.")
+      sleep(3)
+      tx_receipt = None
+
   del p, private_key
   return tx_receipt
 
