@@ -3,8 +3,7 @@
 from eth_account import Account
 from web3 import Web3
 
-import json, argparse, logging, time
-from sys import exit, stdout
+import json, argparse, logging, time, os, sys
 
 from dfk.quest import foraging, fishing, mining
 from dfk.quest.quest import Quest
@@ -16,7 +15,7 @@ import keys, item
 LOG_FORMAT = '%(asctime)s|%(name)s|%(levelname)s: %(message)s'
 LOGGER = logging.getLogger('dfkgrind')
 LOGGER.setLevel(logging.DEBUG)
-logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=stdout)
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=sys.stdout)
 
 DEFAULT_KEYFILE_LOCATION = "config/keystore.json"
 DEFAULT_QUEST_ATTEMPTS = 5 # fi/fo only
@@ -99,7 +98,7 @@ def run_quest(quest_address, quest_type, hero_id, private_key, addr):
     LOGGER.info("sleeping for {m} minutes".format(m=get_stamina(hero_id)*10))
     time.sleep(m * 60)
   else: # quest_type == 'fishing' or 'foraging'
-    sleep_time = ( get_stamina(hero_id) / 5 ) * 35 # some overage built in
+    sleep_time = ( min(25, get_stamina(hero_id)) / 5 ) * 30 # tightening overage to 6%
     LOGGER.info("sleeping for " + str(sleep_time) + " seconds")
     time.sleep(sleep_time)
 
@@ -133,8 +132,11 @@ def use_item(hero_id, private_key, gas_price_gwei=DEFAULT_GAS_PRICE, tx_timeout_
   contract_address = Web3.toChecksumAddress(item.CONTRACT_ADDRESS)
   contract = w3.eth.contract(contract_address, abi=item.ABI)
 
-  tx = contract.functions.consumeItem(item.DFKSTMNPTN_ADDRESS, hero_id).buildTransaction(
-    {'gasPrice': w3.toWei(gas_price_gwei, 'gwei'), 'nonce': nonce})
+  try:
+    tx = contract.functions.consumeItem(item.DFKSTMNPTN_ADDRESS, hero_id).buildTransaction(
+      {'gasPrice': w3.toWei(gas_price_gwei, 'gwei'), 'nonce': nonce})
+  except:
+    raise
 
   ret = None
   while ret is None:
@@ -178,20 +180,22 @@ def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION):
   addr = keys.get_address(w3, private_key)
   if not addr:
     LOGGER.error("Invalid checksum-enabled account address. Bailing out.")
-    exit(1)
+    sys.exit(1)
 
   quest_address = get_quest_address(quest_type)
   if not quest_address:
     LOGGER.error("Unrecognized quest type " + quest_type + " : Bailing out.")
-    exit(1)
+    sys.exit(1)
 
   while True:
-    if get_stamina(hero_id) >= 10:
-      run_quest(quest_address, quest_type, hero_id, private_key, addr)
-    # fix for double chugging until L20
-    if get_stamina(hero_id) < 10:
-      use_item(hero_id, private_key)
-
+    try:
+      if get_stamina(hero_id) >= 10:
+        run_quest(quest_address, quest_type, hero_id, private_key, addr)
+      # fix for double chugging until L20
+      if get_stamina(hero_id) < 10:
+        use_item(hero_id, private_key)
+    except:
+      break
   del private_key
   return
 
@@ -205,4 +209,4 @@ if __name__ == '__main__':
     main(int(args['hero']), args['quest'], args['keyfile'])
   else:
     main(int(args['hero']), args['quest'])
-
+  os.execv(__file__, sys.argv)
