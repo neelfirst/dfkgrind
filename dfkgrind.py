@@ -19,25 +19,44 @@ LOGGER.setLevel(logging.DEBUG)
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=stdout)
 
 DEFAULT_KEYFILE_LOCATION = "config/keystore.json"
-DEFAULT_RPC_SERVER = "https://api.fuzz.fi"
 DEFAULT_QUEST_ATTEMPTS = 5 # fi/fo only
 DEFAULT_GAS_PRICE = 100 # gwei
 
-def check_stamina(hero_id, rpc=DEFAULT_RPC_SERVER):
+RPC_SERVERS = [ \
+                "https://api.fuzz.fi", \
+                "https://rpc.hermesdefi.io", \
+                "https://api.s0.t.hmny.io", \
+                "https://harmony-0-rpc.gateway.pokt.network", \
+                "https://api.harmony.one", \
+              ]
+CURRENT_RPC = 0
+
+# rotate through RPCs in times of crisis
+def switch_rpc():
+  CURRENT_RPC = (CURRENT_RPC + 1) % 5
+  return
+
+def warn_sleep_reset(t, log):
+  switch_rpc()
+  rpc = RPC_SERVERS[CURRENT_RPC]
+  LOGGER.warn("Failed {log}. Switch to {rpc}, sleep {t} sec and retry.".format(log=log,rpc=rpc,t=t))
+  time.sleep(t)
+  return None
+
+def get_stamina(hero_id):
   h = None
   while h is None:
     try:
+      rpc = RPC_SERVERS[CURRENT_RPC]
       h = heroes.human_readable_hero(heroes.get_hero(hero_id,rpc))
     except:
-      LOGGER.warn("couldn't get hero stamina. sleeping and retrying")
-      time.sleep(1)
-      h = None
+      h = warn_sleep_reset("get hero stamina", 1)
+      continue
 
   time_to_full = h['state']['staminaFullAt'] - int(time.time())
-  if time_to_full > 60 * 60 * 7: # 7 hours: 21 stamina from max
-    return True
-  else:
-    return False
+  missing_stamina = time_to_full / ( 60 * 20 ) # 20 min / 1200 sec
+  max_stamina = h['stats']['stamina']
+  return max_stamina - missing_stamina
 
 def get_quest_address(quest_type):
   if quest_type == 'fishing':
@@ -50,12 +69,13 @@ def get_quest_address(quest_type):
     quest_address = None
   return quest_address
 
-def run_quest(w3, quest_address, quest_type, hero_id, encrypted_key, p, addr):
-  private_key = Account.decrypt(encrypted_key, p)
-  quest = Quest(rpc_address=DEFAULT_RPC_SERVER, logger=LOGGER)
-  success = False
-  while success is False:
+def run_quest(quest_address, quest_type, hero_id, private_key, addr):
+  success = None
+  while success is None:
     try:
+      w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
+      quest = Quest(rpc_address=RPC_SERVERS[CURRENT_RPC], logger=LOGGER)
+
       quest.start_quest(quest_address=quest_address, \
                         hero_ids=[hero_id], \
                         attempts=DEFAULT_QUEST_ATTEMPTS, \
@@ -65,9 +85,8 @@ def run_quest(w3, quest_address, quest_type, hero_id, encrypted_key, p, addr):
                         tx_timeout_seconds=30)
       success = True
     except:
-      LOGGER.warn("Starting quest failed! Hero is inactive. Retrying in 3 seconds.")
-      time.sleep(3)
-      success = False
+      success = warn_sleep_reset("starting quest", 1)
+      continue
 
   if quest_type == 'mining':
     LOGGER.info("sleeping for 250 minutes")
@@ -80,25 +99,24 @@ def run_quest(w3, quest_address, quest_type, hero_id, encrypted_key, p, addr):
   quest_result = None
   while quest_result is None:
     try:
+      w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
       tx_receipt = quest.complete_quest(hero_id=hero_id, \
                                         private_key=private_key, \
                                         nonce=w3.eth.getTransactionCount(addr), \
                                         gas_price_gwei=DEFAULT_GAS_PRICE, \
-                                        tx_timeout_seconds=30)
+                                        tx_timeout_seconds=30, \
+                                        rpc_address=RPC_SERVERS[CURRENT_RPC]) # needs PR to 0rtis/dfk!
       quest_result = quest.parse_complete_quest_receipt(tx_receipt)
       LOGGER.info("Rewards: " + str(quest_result))
     except:
-      LOGGER.warn("Completing quest failed! Hero is stuck. Retrying in 3 seconds.")
-      time.sleep(3)
-      quest_result = None
-  del p, private_key
+      quest_result = warn_sleep_reset("completing quest", 1)
+      continue
+
+  del private_key
   return tx_receipt
 
-def use_item(w3, hero_id, encrypted_key, p, \
-            gas_price_gwei=DEFAULT_GAS_PRICE, \
-            tx_timeout_seconds=30, \
-            rpc_address=DEFAULT_RPC_SERVER):
-  private_key = Account.decrypt(encrypted_key, p)
+def use_item(hero_id, private_key, gas_price_gwei=DEFAULT_GAS_PRICE, tx_timeout_seconds=30):
+  w3 = Web3(Web3.HTTPProvider(DEFAULT_RPC_SERVERS[CURRENT_RPC]))
   account = w3.eth.account.privateKeyToAccount(private_key)
   w3.eth.default_account = account.address
   nonce = w3.eth.getTransactionCount(account.address)
@@ -112,6 +130,7 @@ def use_item(w3, hero_id, encrypted_key, p, \
   ret = None
   while ret is None:
     try:
+      w3 = Web3(Web3.HTTPProvider(DEFAULT_RPC_SERVERS[CURRENT_RPC]))
       LOGGER.info("Signing transaction")
       signed_tx = w3.eth.account.sign_transaction(tx, private_key=private_key)
 
@@ -119,9 +138,8 @@ def use_item(w3, hero_id, encrypted_key, p, \
       ret = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
       LOGGER.info("Transaction successfully sent !")
     except:
-      LOGGER.warn("Failed to send dfkstmnptn usage tx. Retrying in 3 seconds")
-      time.sleep(3)
-      ret = None
+      ret = warn_sleep_reset("potion usage tx", 1)
+      continue
 
   tx_receipt = None
   while tx_receipt is None:
@@ -132,22 +150,23 @@ def use_item(w3, hero_id, encrypted_key, p, \
                                                        poll_latency=3)
       LOGGER.info("Transaction mined !")
     except:
-      LOGGER.warn("Failed to confirm dfkstmnptn usage. Retrying in 3 seconds.")
-      time.sleep(3)
-      tx_receipt = None
+      tx_receipt = warn_sleep_reset("potion confirmation", 1)
+      continue
 
-  del p, private_key
+  del private_key
   return tx_receipt
 
-def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION, rpc=DEFAULT_RPC_SERVER):
-  w3 = Web3(Web3.HTTPProvider(rpc))
+def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION):
+  w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
+  private_key = None # paste in your private key here for competitive autoquesting
 
-  encrypted_key = keys.manage_keyfile(key_path)
-  LOGGER.info('loaded encrypted key')
+  if private_key is None:
+    encrypted_key = keys.manage_keyfile(key_path)
+    p = keys.get_password(w3, encrypted_key)
+    private_key = Account.decrypt(encrypted_key, p)
+    LOGGER.info('loaded key')
 
-  p = keys.get_password(w3, encrypted_key)
-
-  addr = keys.get_address(w3, encrypted_key, p)
+  addr = keys.get_address(w3, private_key)
   if not addr:
     LOGGER.error("Invalid checksum-enabled account address. Bailing out.")
     exit(1)
@@ -158,26 +177,22 @@ def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION, rpc=DEFAULT_RPC
     exit(1)
 
   while True:
-    run_quest(w3, quest_address, quest_type, hero_id, encrypted_key, p, addr)
-    if check_stamina(hero_id, rpc):
-      use_item(w3, hero_id, encrypted_key, p)
+    run_quest(quest_address, quest_type, hero_id, private_key, addr)
+    # fix for double chugging until L20
+    if get_stamina(hero_id) < 10:
+      use_item(hero_id, private_key)
+
+  del private_key
   return
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='Welcome to the grinder...')
   parser.add_argument('--hero', help='input (exactly one) hero id', required=True)
-  parser.add_argument('--quest', help='choose one: [fishing, foraging]', required=True)
+  parser.add_argument('--quest', help='choose one: [mining, fishing, foraging]', required=True)
   parser.add_argument('--keyfile', help='relative path to keyfile (default: config/keystore.json)', required=False)
-  parser.add_argument('--rpc', help='RPC server to use for calls (default: https://api.fuzz.fi)', required=False)
   args = vars(parser.parse_args())
   if (args['keyfile']):
-    if (args['rpc']):
-      main(int(args['hero']), args['quest'], args['keyfile'], args['rpc'])
-    else:
-      main(int(args['hero']), args['quest'], args['keyfile'])
+    main(int(args['hero']), args['quest'], args['keyfile'])
   else:
-    if (args['rpc']):
-      main(int(args['hero']), args['quest'], rpc=args['rpc'])
-    else:
-      main(int(args['hero']), args['quest'])
+    main(int(args['hero']), args['quest'])
 

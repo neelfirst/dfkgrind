@@ -37,14 +37,14 @@ def get_password(w3, encrypted_key):
     logger.exception("Bad passphrase. Bailing out.")
   return p
 
-def get_address(w3, encrypted_key, p):
+def get_address(w3, private_key):
   account_address = None
   try:
-    account_address = w3.eth.account.privateKeyToAccount(Account.decrypt(encrypted_key, p)).address
+    account_address = w3.eth.account.privateKeyToAccount(private_key).address
   except:
     logger.exception("Bad passphrase. Bailing out.")
   if not account_address:
     logger.exception("Could not decode checksum-enabled account address. Bailing out.")
-  del p
+  del private_key
   return account_address
 
