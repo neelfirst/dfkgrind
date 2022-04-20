@@ -3,8 +3,7 @@
 from eth_account import Account
 from web3 import Web3
 
-import json, argparse, logging
-from time import sleep
+import json, argparse, logging, time
 from sys import exit, stdout
 
 from dfk.quest import foraging, fishing, mining
@@ -23,6 +22,22 @@ DEFAULT_KEYFILE_LOCATION = "config/keystore.json"
 DEFAULT_RPC_SERVER = "https://api.fuzz.fi"
 DEFAULT_QUEST_ATTEMPTS = 5 # fi/fo only
 DEFAULT_GAS_PRICE = 100 # gwei
+
+def check_stamina(hero_id, rpc=DEFAULT_RPC_SERVER):
+  h = None
+  while h is None:
+    try:
+      h = heroes.human_readable_hero(heroes.get_hero(hero_id,rpc))
+    except:
+      LOGGER.warn("couldn't get hero stamina. sleeping and retrying")
+      time.sleep(1)
+      h = None
+
+  time_to_full = h['state']['staminaFullAt'] - int(time.time())
+  if time_to_full > 60 * 60 * 7: # 7 hours: 21 stamina from max
+    return True
+  else:
+    return False
 
 def get_quest_address(quest_type):
   if quest_type == 'fishing':
@@ -51,16 +66,16 @@ def run_quest(w3, quest_address, quest_type, hero_id, encrypted_key, p, addr):
       success = True
     except:
       LOGGER.warn("Starting quest failed! Hero is inactive. Retrying in 3 seconds.")
-      sleep(3)
+      time.sleep(3)
       success = False
 
   if quest_type == 'mining':
     LOGGER.info("sleeping for 250 minutes")
-    sleep(25 * 10 * 60)
+    time.sleep(25 * 10 * 60)
   else: # quest_type == 'fishing' or 'foraging'
     sleep_time = DEFAULT_QUEST_ATTEMPTS * 35 # some overage built in
     LOGGER.info("sleeping for " + sleep_time + " seconds")
-    sleep(sleep_time)
+    time.sleep(sleep_time)
 
   quest_result = None
   while quest_result is None:
@@ -74,7 +89,7 @@ def run_quest(w3, quest_address, quest_type, hero_id, encrypted_key, p, addr):
       LOGGER.info("Rewards: " + str(quest_result))
     except:
       LOGGER.warn("Completing quest failed! Hero is stuck. Retrying in 3 seconds.")
-      sleep(3)
+      time.sleep(3)
       quest_result = None
   del p, private_key
   return tx_receipt
@@ -105,7 +120,7 @@ def use_item(w3, hero_id, encrypted_key, p, \
       LOGGER.info("Transaction successfully sent !")
     except:
       LOGGER.warn("Failed to send dfkstmnptn usage tx. Retrying in 3 seconds")
-      sleep(3)
+      time.sleep(3)
       ret = None
 
   tx_receipt = None
@@ -118,7 +133,7 @@ def use_item(w3, hero_id, encrypted_key, p, \
       LOGGER.info("Transaction mined !")
     except:
       LOGGER.warn("Failed to confirm dfkstmnptn usage. Retrying in 3 seconds.")
-      sleep(3)
+      time.sleep(3)
       tx_receipt = None
 
   del p, private_key
@@ -144,8 +159,8 @@ def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION, rpc=DEFAULT_RPC
 
   while True:
     run_quest(w3, quest_address, quest_type, hero_id, encrypted_key, p, addr)
-    use_item(w3, hero_id, encrypted_key, p)
-
+    if check_stamina(hero_id, rpc):
+      use_item(w3, hero_id, encrypted_key, p)
   return
 
 if __name__ == '__main__':
@@ -165,5 +180,4 @@ if __name__ == '__main__':
       main(int(args['hero']), args['quest'], rpc=args['rpc'])
     else:
       main(int(args['hero']), args['quest'])
-
 
