@@ -6,8 +6,10 @@
 
 # usage
 
-`git clone git@github.com:neelfirst/dfkgrind`
-`cd dfkgrind`
-`git submodule update --init --recursive`
-`chmod +x dfkgrind.py`
-`./dfkgrind.py --hero <hero_id> -- quest <quest_type>`
+```
+git clone git@github.com:neelfirst/dfkgrind
+cd dfkgrind
+git submodule update --init --recursive
+chmod +x dfkgrind.py
+./dfkgrind.py --hero <hero_id> -- quest <quest_type>
+```
