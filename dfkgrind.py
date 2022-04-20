@@ -33,10 +33,12 @@ CURRENT_RPC = 0
 
 # rotate through RPCs in times of crisis
 def switch_rpc():
-  CURRENT_RPC = (CURRENT_RPC + 1) % 5
+  global CURRENT_RPC
+  CURRENT_RPC += 1
+  CURRENT_RPC %= 5
   return
 
-def warn_sleep_reset(t, log):
+def warn_sleep_reset(log, t):
   switch_rpc()
   rpc = RPC_SERVERS[CURRENT_RPC]
   LOGGER.warn("Failed {log}. Switch to {rpc}, sleep {t} sec and retry.".format(log=log,rpc=rpc,t=t))
@@ -73,6 +75,7 @@ def run_quest(quest_address, quest_type, hero_id, private_key, addr):
   success = None
   while success is None:
     try:
+      LOGGER.info('attempting to start quest')
       w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
       quest = Quest(rpc_address=RPC_SERVERS[CURRENT_RPC], logger=LOGGER)
 
@@ -84,21 +87,26 @@ def run_quest(quest_address, quest_type, hero_id, private_key, addr):
                         gas_price_gwei=DEFAULT_GAS_PRICE, \
                         tx_timeout_seconds=30)
       success = True
-    except:
-      success = warn_sleep_reset("starting quest", 1)
-      continue
+      LOGGER.info('successfully started quest')
+    except Exception as ex:
+      if "already questing" in str(ex):
+        break
+      else:
+        success = warn_sleep_reset("starting quest", 1)
+        continue
 
   if quest_type == 'mining':
-    LOGGER.info("sleeping for 250 minutes")
-    time.sleep(25 * 10 * 60)
+    LOGGER.info("sleeping for {m} minutes".format(m=get_stamina(hero_id)*10))
+    time.sleep(m * 60)
   else: # quest_type == 'fishing' or 'foraging'
-    sleep_time = DEFAULT_QUEST_ATTEMPTS * 35 # some overage built in
-    LOGGER.info("sleeping for " + sleep_time + " seconds")
+    sleep_time = ( get_stamina(hero_id) / 5 ) * 35 # some overage built in
+    LOGGER.info("sleeping for " + str(sleep_time) + " seconds")
     time.sleep(sleep_time)
 
   quest_result = None
   while quest_result is None:
     try:
+      LOGGER.info('attempting to complete quest')
       w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
       tx_receipt = quest.complete_quest(hero_id=hero_id, \
                                         private_key=private_key, \
@@ -116,7 +124,8 @@ def run_quest(quest_address, quest_type, hero_id, private_key, addr):
   return tx_receipt
 
 def use_item(hero_id, private_key, gas_price_gwei=DEFAULT_GAS_PRICE, tx_timeout_seconds=30):
-  w3 = Web3(Web3.HTTPProvider(DEFAULT_RPC_SERVERS[CURRENT_RPC]))
+  LOGGER.info("using potion")
+  w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
   account = w3.eth.account.privateKeyToAccount(private_key)
   w3.eth.default_account = account.address
   nonce = w3.eth.getTransactionCount(account.address)
@@ -130,7 +139,7 @@ def use_item(hero_id, private_key, gas_price_gwei=DEFAULT_GAS_PRICE, tx_timeout_
   ret = None
   while ret is None:
     try:
-      w3 = Web3(Web3.HTTPProvider(DEFAULT_RPC_SERVERS[CURRENT_RPC]))
+      w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
       LOGGER.info("Signing transaction")
       signed_tx = w3.eth.account.sign_transaction(tx, private_key=private_key)
 
@@ -177,7 +186,8 @@ def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION):
     exit(1)
 
   while True:
-    run_quest(quest_address, quest_type, hero_id, private_key, addr)
+    if get_stamina(hero_id) >= 10:
+      run_quest(quest_address, quest_type, hero_id, private_key, addr)
     # fix for double chugging until L20
     if get_stamina(hero_id) < 10:
       use_item(hero_id, private_key)
