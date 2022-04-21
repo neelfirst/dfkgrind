@@ -18,7 +18,6 @@ LOGGER.setLevel(logging.DEBUG)
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=sys.stdout)
 
 DEFAULT_KEYFILE_LOCATION = "config/keystore.json"
-DEFAULT_QUEST_ATTEMPTS = 5 # fi/fo only
 DEFAULT_GAS_PRICE = 100 # gwei
 
 RPC_SERVERS = [ \
@@ -74,13 +73,14 @@ def run_quest(quest_address, quest_type, hero_id, private_key, addr):
   success = None
   while success is None:
     try:
+      quest_attempts = min(5, int(get_stamina(hero_id) / 5))
       LOGGER.info('attempting to start quest')
       w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
       quest = Quest(rpc_address=RPC_SERVERS[CURRENT_RPC], logger=LOGGER)
 
       quest.start_quest(quest_address=quest_address, \
                         hero_ids=[hero_id], \
-                        attempts=DEFAULT_QUEST_ATTEMPTS, \
+                        attempts=quest_attempts, \
                         private_key=private_key, \
                         nonce=w3.eth.getTransactionCount(addr), \
                         gas_price_gwei=DEFAULT_GAS_PRICE, \
@@ -91,6 +91,7 @@ def run_quest(quest_address, quest_type, hero_id, private_key, addr):
       if "already questing" in str(ex):
         break
       else:
+        LOGGER.exception(ex)
         success = warn_sleep_reset("starting quest", 1)
         continue
 
