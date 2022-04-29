@@ -13,3 +13,7 @@ git submodule update --init --recursive
 chmod +x dfkgrind.py
 ./dfkgrind.py --hero <hero_id> -- quest <quest_type>
 ```
+# todo
+
+- migrate fully to quest v2
+- update dfk_lib fork
