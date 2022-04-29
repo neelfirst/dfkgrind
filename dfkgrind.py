@@ -205,9 +205,9 @@ def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION):
       # fix for double chugging until L20
       if get_stamina(hero_id) < 10:
         use_item(hero_id, private_key)
-    except:
+    except Exception as ex:
+      LOGGER.warn("Exception: " + str(ex) + " Restarting Bot.")
       break
-  del private_key
   return
 
 if __name__ == '__main__':
