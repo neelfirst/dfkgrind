@@ -53,21 +53,25 @@ def get_stamina(hero_id):
       h = warn_sleep_reset("get hero stamina", 1)
       continue
 
-  time_to_full = h['state']['staminaFullAt'] - int(time.time())
+  time_to_full = max(0, h['state']['staminaFullAt'] - int(time.time()))
   missing_stamina = time_to_full / ( 60 * 20 ) # 20 min / 1200 sec
   max_stamina = h['stats']['stamina']
   return max_stamina - missing_stamina
 
-def get_quest_address(quest_type):
+def get_quest_details(quest_type):
   if quest_type == 'fishing':
     quest_address = fishing.QUEST_CONTRACT_ADDRESS
+    new_quest = True
   elif quest_type == 'foraging':
     quest_address = foraging.QUEST_CONTRACT_ADDRESS
+    new_quest = True
   elif quest_type == 'mining':
     quest_address = mining.GOLD_QUEST_CONTRACT_ADDRESS
+    new_quest = False
   else:
     quest_address = None
-  return quest_address
+    new_quest = False
+  return quest_address, new_quest
 
 def run_quest(quest_address, quest_type, hero_id, private_key, addr):
   success = None
@@ -116,9 +120,12 @@ def run_quest(quest_address, quest_type, hero_id, private_key, addr):
                                         rpc_address=RPC_SERVERS[CURRENT_RPC]) # needs PR to 0rtis/dfk!
       quest_result = quest.parse_complete_quest_receipt(tx_receipt)
       LOGGER.info("Rewards: " + str(quest_result))
-    except:
-      quest_result = warn_sleep_reset("completing quest", 1)
-      continue
+    except Exception as ex:
+      if "no quest found" in str(ex):
+        break
+      else:
+        quest_result = warn_sleep_reset("completing quest", 1)
+        continue
 
   del private_key
   return tx_receipt
@@ -169,27 +176,30 @@ def use_item(hero_id, private_key, gas_price_gwei=DEFAULT_GAS_PRICE, tx_timeout_
   return tx_receipt
 
 def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION):
-  w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
   private_key = None # paste in your private key here for competitive autoquesting
+  addr = None # paste in your address if you want to skip using keys.py
 
   if private_key is None:
+    w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
     encrypted_key = keys.manage_keyfile(key_path)
     p = keys.get_password(w3, encrypted_key)
     private_key = Account.decrypt(encrypted_key, p)
     LOGGER.info('loaded key')
 
-  addr = keys.get_address(w3, private_key)
-  if not addr:
-    LOGGER.error("Invalid checksum-enabled account address. Bailing out.")
-    sys.exit(1)
+  if addr is None:
+    addr = keys.get_address(w3, private_key)
+    if not addr:
+      LOGGER.error("Invalid checksum-enabled account address. Bailing out.")
+      sys.exit(1)
 
-  quest_address = get_quest_address(quest_type)
+  quest_address, new_quest = get_quest_details(quest_type)
   if not quest_address:
     LOGGER.error("Unrecognized quest type " + quest_type + " : Bailing out.")
     sys.exit(1)
 
   while True:
     try:
+      print(get_stamina(hero_id))
       if get_stamina(hero_id) >= 10:
         run_quest(quest_address, quest_type, hero_id, private_key, addr)
       # fix for double chugging until L20
