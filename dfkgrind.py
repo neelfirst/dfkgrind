@@ -5,10 +5,10 @@ from web3 import Web3
 
 import json, argparse, logging, time, os, sys
 
-from dfk.quest import foraging, fishing, mining
-from dfk.quest.quest import Quest
-from dfk.quest.utils import utils as quest_utils
-import dfk.hero.hero as heroes
+from dfk.quests.professions import foraging, fishing, minning
+from dfk.quests.training import arm_wrestling
+from dfk.quests import quest_core_v2
+import dfk.hero.hero_core as heroes
 
 import keys, item
 
@@ -39,7 +39,7 @@ def switch_rpc():
 def warn_sleep_reset(log, t):
   switch_rpc()
   rpc = RPC_SERVERS[CURRENT_RPC]
-  LOGGER.warn("Failed {log}. Switch to {rpc}, sleep {t} sec and retry.".format(log=log,rpc=rpc,t=t))
+  LOGGER.warning("Failed {log}. Switch to {rpc}, sleep {t} sec and retry.".format(log=log,rpc=rpc,t=t))
   time.sleep(t)
   return None
 
@@ -48,8 +48,9 @@ def get_stamina(hero_id):
   while h is None:
     try:
       rpc = RPC_SERVERS[CURRENT_RPC]
-      h = heroes.human_readable_hero(heroes.get_hero(hero_id,rpc))
-    except:
+      h = heroes.human_readable_hero(heroes.get_hero(heroes.SERENDALE_CONTRACT_ADDRESS, hero_id,rpc))
+    except Exception as e:
+      LOGGER.exception(str(e))
       h = warn_sleep_reset("get hero stamina", 1)
       continue
 
@@ -60,13 +61,16 @@ def get_stamina(hero_id):
 
 def get_quest_details(quest_type):
   if quest_type == 'fishing':
-    quest_address = fishing.QUEST_CONTRACT_ADDRESS
+    quest_address = fishing.QUEST_CONTRACT_ADDRESS_V2
     new_quest = True
   elif quest_type == 'foraging':
-    quest_address = foraging.QUEST_CONTRACT_ADDRESS
+    quest_address = foraging.QUEST_CONTRACT_ADDRESS_V2
     new_quest = True
   elif quest_type == 'mining':
-    quest_address = mining.GOLD_QUEST_CONTRACT_ADDRESS
+    quest_address = minning.GOLD_QUEST_CONTRACT_ADDRESS
+    new_quest = False
+  elif quest_type == 'strength':
+    quest_address = arm_wrestling.QUEST_CONTRACT_ADDRESS
     new_quest = False
   else:
     quest_address = None
@@ -80,15 +84,17 @@ def run_quest(quest_address, quest_type, hero_id, private_key, addr):
       quest_attempts = min(5, int(get_stamina(hero_id) / 5))
       LOGGER.info('attempting to start quest')
       w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
-      quest = Quest(rpc_address=RPC_SERVERS[CURRENT_RPC], logger=LOGGER)
 
-      quest.start_quest(quest_address=quest_address, \
-                        hero_ids=[hero_id], \
-                        attempts=quest_attempts, \
-                        private_key=private_key, \
-                        nonce=w3.eth.getTransactionCount(addr), \
-                        gas_price_gwei=DEFAULT_GAS_PRICE, \
-                        tx_timeout_seconds=30)
+      quest_core_v2.start_quest(quest_address=quest_address, \
+                                hero_ids=[hero_id], \
+                                attempts=quest_attempts, \
+                                level=1, \
+                                private_key=private_key, \
+                                nonce=w3.eth.getTransactionCount(addr), \
+                                gas_price_gwei=DEFAULT_GAS_PRICE, \
+                                tx_timeout_seconds=30, \
+                                rpc_address=RPC_SERVERS[CURRENT_RPC], \
+                                logger=LOGGER)
       success = True
       LOGGER.info('successfully started quest')
     except Exception as ex:
@@ -102,7 +108,7 @@ def run_quest(quest_address, quest_type, hero_id, private_key, addr):
   if quest_type == 'mining':
     LOGGER.info("sleeping for {m} minutes".format(m=get_stamina(hero_id)*10))
     time.sleep(m * 60)
-  else: # quest_type == 'fishing' or 'foraging'
+  else: # quest_type == 'fishing' or 'foraging' or 'strength'
     sleep_time = ( min(25, get_stamina(hero_id)) / 5 ) * 30 # tightening overage to 6%
     LOGGER.info("sleeping for " + str(sleep_time) + " seconds")
     time.sleep(sleep_time)
@@ -112,15 +118,17 @@ def run_quest(quest_address, quest_type, hero_id, private_key, addr):
     try:
       LOGGER.info('attempting to complete quest')
       w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
-      tx_receipt = quest.complete_quest(hero_id=hero_id, \
-                                        private_key=private_key, \
-                                        nonce=w3.eth.getTransactionCount(addr), \
-                                        gas_price_gwei=DEFAULT_GAS_PRICE, \
-                                        tx_timeout_seconds=30, \
-                                        rpc_address=RPC_SERVERS[CURRENT_RPC]) # needs PR to 0rtis/dfk!
-      quest_result = quest.parse_complete_quest_receipt(tx_receipt)
+      tx_receipt = quest_core_v2.complete_quest(hero_id=hero_id, \
+                                                private_key=private_key, \
+                                                nonce=w3.eth.getTransactionCount(addr), \
+                                                gas_price_gwei=DEFAULT_GAS_PRICE, \
+                                                tx_timeout_seconds=30, \
+                                                rpc_address=RPC_SERVERS[CURRENT_RPC], \
+                                                logger=LOGGER)
+      quest_result = quest_core_v2.parse_complete_quest_receipt(tx_receipt, RPC_SERVERS[CURRENT_RPC])
       LOGGER.info("Rewards: " + str(quest_result))
     except Exception as ex:
+      LOGGER.exception(str(ex))
       if "no quest found" in str(ex):
         break
       else:
@@ -156,7 +164,8 @@ def use_item(hero_id, private_key, gas_price_gwei=DEFAULT_GAS_PRICE, tx_timeout_
       LOGGER.info("Sending transaction " + str(tx))
       ret = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
       LOGGER.info("Transaction successfully sent !")
-    except:
+    except Exception as e:
+      LOGGER.exception(str(ex))
       ret = warn_sleep_reset("potion usage tx", 1)
       continue
 
@@ -206,14 +215,14 @@ def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION):
       if get_stamina(hero_id) < 10:
         use_item(hero_id, private_key)
     except Exception as ex:
-      LOGGER.warn("Exception: " + str(ex) + " Restarting Bot.")
+      LOGGER.warning("Exception: " + str(ex) + " Restarting Bot.")
       break
   return
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='Welcome to the grinder...')
   parser.add_argument('--hero', help='input (exactly one) hero id', required=True)
-  parser.add_argument('--quest', help='choose one: [mining, fishing, foraging]', required=True)
+  parser.add_argument('--quest', help='choose one: [mining, fishing, foraging, strength]', required=True)
   parser.add_argument('--keyfile', help='relative path to keyfile (default: config/keystore.json)', required=False)
   args = vars(parser.parse_args())
   if (args['keyfile']):
