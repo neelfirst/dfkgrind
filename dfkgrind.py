@@ -10,13 +10,14 @@ from dfk.quests.training import arm_wrestling
 from dfk.quests import quest_core_v2
 import dfk.hero.hero_core as heroes
 
-import keys, item
+import keys, item, profile
 
 LOG_FORMAT = '%(asctime)s|%(name)s|%(levelname)s: %(message)s'
 LOGGER = logging.getLogger('dfkgrind')
 LOGGER.setLevel(logging.DEBUG)
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=sys.stdout)
 
+DEFAULT_CONFIG_LOCATION = "config/profile.json"
 DEFAULT_KEYFILE_LOCATION = "config/keystore.json"
 DEFAULT_GAS_PRICE = 100 # gwei
 
@@ -59,25 +60,18 @@ def get_stamina(hero_id):
   max_stamina = h['stats']['stamina']
   return max_stamina - missing_stamina
 
-def get_quest_details(quest_type):
-  if quest_type == 'fishing':
-    quest_address = fishing.QUEST_CONTRACT_ADDRESS_V2
-    new_quest = True
-  elif quest_type == 'foraging':
-    quest_address = foraging.QUEST_CONTRACT_ADDRESS_V2
-    new_quest = True
-  elif quest_type == 'mining':
-    quest_address = minning.GOLD_QUEST_CONTRACT_ADDRESS
-    new_quest = False
-  elif quest_type == 'strength':
-    quest_address = arm_wrestling.QUEST_CONTRACT_ADDRESS
-    new_quest = False
-  else:
-    quest_address = None
-    new_quest = False
-  return quest_address, new_quest
+def sleep_for(quest_type):
+  sleep_time = 0
+  if quest_type == 'mining' or quest_type == 'gardening':
+    sleep_time =  250 * 60
+  elif quest_type == 'fishing' or quest_type == 'foraging':
+    sleep_time =  140
+  else: # training quests
+    sleep_time =  100
+  time.sleep(sleep_time)
+  return
 
-def run_quest(quest_address, quest_type, hero_id, private_key, addr):
+def begin_quest(quest_address, hero_id, private_key, addr):
   success = None
   while success is None:
     try:
@@ -105,14 +99,7 @@ def run_quest(quest_address, quest_type, hero_id, private_key, addr):
         success = warn_sleep_reset("starting quest", 1)
         continue
 
-  if quest_type == 'mining':
-    LOGGER.info("sleeping for {m} minutes".format(m=get_stamina(hero_id)*10))
-    time.sleep(m * 60)
-  else: # quest_type == 'fishing' or 'foraging' or 'strength'
-    sleep_time = ( min(25, get_stamina(hero_id)) / 5 ) * 30 # tightening overage to 6%
-    LOGGER.info("sleeping for " + str(sleep_time) + " seconds")
-    time.sleep(sleep_time)
-
+def end_quest(quest_address, hero_id, private_key, addr):
   quest_result = None
   while quest_result is None:
     try:
@@ -184,7 +171,7 @@ def use_item(hero_id, private_key, gas_price_gwei=DEFAULT_GAS_PRICE, tx_timeout_
   del private_key
   return tx_receipt
 
-def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION):
+def main(config_path=DEFAULT_CONFIG_LOCATION, key_path=DEFAULT_KEYFILE_LOCATION):
   private_key = None # paste in your private key here for competitive autoquesting
   addr = None # paste in your address if you want to skip using keys.py
 
@@ -201,32 +188,38 @@ def main(hero_id, quest_type, key_path=DEFAULT_KEYFILE_LOCATION):
       LOGGER.error("Invalid checksum-enabled account address. Bailing out.")
       sys.exit(1)
 
-  quest_address, new_quest = get_quest_details(quest_type)
-  if not quest_address:
-    LOGGER.error("Unrecognized quest type " + quest_type + " : Bailing out.")
-    sys.exit(1)
-
+  user_profile = profile.main(config_path, addr, RPC_SERVERS[CURRENT_RPC])
+  for hero in user_profile:
+    begin_quest(hero['quest_address'], hero['hero_id'], private_key, addr)
+  raw_input("Debug wait. Press Enter to continue with end_quest.")
+  for hero in user_profile:
+    end_quest(hero['quest_address'], hero['hero_id'], private_key, addr)
+'''
   while True:
     try:
-      print(get_stamina(hero_id))
-      if get_stamina(hero_id) >= 10:
-        run_quest(quest_address, quest_type, hero_id, private_key, addr)
-      # fix for double chugging until L20
-      if get_stamina(hero_id) < 10:
-        use_item(hero_id, private_key)
+      begin_quest(quest_address, hero_id, private_key, addr)
+      sleep_for(quest_type)
+      end_quest(quest_address, hero_id, private_key, addr)
     except Exception as ex:
       LOGGER.warning("Exception: " + str(ex) + " Restarting Bot.")
       break
+'''
   return
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='Welcome to the grinder...')
-  parser.add_argument('--hero', help='input (exactly one) hero id', required=True)
-  parser.add_argument('--quest', help='choose one: [mining, fishing, foraging, strength]', required=True)
   parser.add_argument('--keyfile', help='relative path to keyfile (default: config/keystore.json)', required=False)
+  parser.add_argument('--config', help='relative path to config file (default: config/profile.json)', required=False)
   args = vars(parser.parse_args())
-  if (args['keyfile']):
-    main(int(args['hero']), args['quest'], args['keyfile'])
+  key_path = None
+  config_path = None
+  if not args['config']:
+    config_path = DEFAULT_CONFIG_LOCATION
   else:
-    main(int(args['hero']), args['quest'])
+    config_path = args['config']
+  if not args['keyfile']:
+    key_path = DEFAULT_CONFIG_LOCATION
+  else:
+    key_path = args['keyfile']
+  main(config_path, key_path)
   os.execv(__file__, sys.argv)
