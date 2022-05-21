@@ -6,7 +6,7 @@ from dfk.quests.training import arm_wrestling, game_of_ball, dancing, darts, puz
 from dfk.quests.training import helping_the_farm, card_game, alchemist_assistance
 from dfk.quests.professions import fishing, foraging, gardening, minning
 from pathlib import Path
-import json
+import json, logging
 
 STAT_QUEST_MAP = {'strength' : arm_wrestling.QUEST_CONTRACT_ADDRESS, \
                  'agility' : game_of_ball.QUEST_CONTRACT_ADDRESS, \
@@ -39,13 +39,13 @@ def set_quest(hero, mode):
     profession = hero_utils.parse_stat_genes(hero['info']['statGenes'])['profession']
     return PROF_QUEST_MAP[profession]
   else:
-    return raw_input("Manually input contract address for hero" + str(hero) + ": ")
+    return input("Manually input contract address for hero" + str(hero) + ": ")
 
 def set_stampot(hero, mode):
   if mode == "training" or mode == "profession":
     return 0
   else:
-    if 'y' in raw_input("Use stampots for hero id " + hero['id'] + "? [y/N]"):
+    if 'y' in input("Use stampots for hero id " + hero['id'] + "? [y/N]"):
       return 1
     else:
       return 0
@@ -55,12 +55,12 @@ def make_new_profile(path_obj, hero_list):
   quest_config = []
   mode = None
   while mode is None:
-    mode = raw_input("Autoconfig your heroes: [training|profession|manual]")
-    if mode != 'training' or mode != 'profession' or mode != 'manual':
+    mode = input("Autoconfig your heroes: [training|profession|manual]")
+    if mode != 'training' and mode != 'profession' and mode != 'manual':
       mode = None
       logger.error('mode not recognized, please try again.')
   for hero in hero_list:
-    quest_config.append({"id" : hero["id"], "quest" : set_quest(hero, mode), "stampot" : set_stampot(hero, mode)})
+    quest_config.append({"hero_id" : hero["id"], "quest_address" : set_quest(hero, mode), "stampot" : set_stampot(hero, mode)})
   with open(path_obj,'w') as fp:
     fp.write(json.dumps(quest_config, indent=2))
   logger.info('wrote user config to ' + str(path_obj))

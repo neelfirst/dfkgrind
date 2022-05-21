@@ -11,6 +11,8 @@ def make_new_keyfile(path_obj):
   x = getpass(prompt='Paste private key: ')
   y = getpass(prompt='Enter passphrase: ')
   z = Account.encrypt(x,y)
+  if not path_obj.exists():
+    path_obj.touch()
   with path_obj.open('w') as f:
     f.write(json.dumps(z))
   logger = logging.getLogger('dfkgrind')

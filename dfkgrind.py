@@ -171,7 +171,7 @@ def use_item(hero_id, private_key, gas_price_gwei=DEFAULT_GAS_PRICE, tx_timeout_
   del private_key
   return tx_receipt
 
-def main(config_path=DEFAULT_CONFIG_LOCATION, key_path=DEFAULT_KEYFILE_LOCATION):
+def main(config_path, key_path):
   private_key = None # paste in your private key here for competitive autoquesting
   addr = None # paste in your address if you want to skip using keys.py
 
@@ -188,13 +188,13 @@ def main(config_path=DEFAULT_CONFIG_LOCATION, key_path=DEFAULT_KEYFILE_LOCATION)
       LOGGER.error("Invalid checksum-enabled account address. Bailing out.")
       sys.exit(1)
 
-  user_profile = profile.main(config_path, addr, RPC_SERVERS[CURRENT_RPC])
+  user_profile = profile.main(config_path, RPC_SERVERS[CURRENT_RPC], addr)
   for hero in user_profile:
     begin_quest(hero['quest_address'], hero['hero_id'], private_key, addr)
-  raw_input("Debug wait. Press Enter to continue with end_quest.")
+  input("Debug wait. Press Enter to continue with end_quest.")
   for hero in user_profile:
     end_quest(hero['quest_address'], hero['hero_id'], private_key, addr)
-'''
+  '''
   while True:
     try:
       begin_quest(quest_address, hero_id, private_key, addr)
@@ -203,7 +203,7 @@ def main(config_path=DEFAULT_CONFIG_LOCATION, key_path=DEFAULT_KEYFILE_LOCATION)
     except Exception as ex:
       LOGGER.warning("Exception: " + str(ex) + " Restarting Bot.")
       break
-'''
+  '''
   return
 
 if __name__ == '__main__':
@@ -218,7 +218,7 @@ if __name__ == '__main__':
   else:
     config_path = args['config']
   if not args['keyfile']:
-    key_path = DEFAULT_CONFIG_LOCATION
+    key_path = DEFAULT_KEYFILE_LOCATION
   else:
     key_path = args['keyfile']
   main(config_path, key_path)
