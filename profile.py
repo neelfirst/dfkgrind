@@ -18,7 +18,6 @@ STAT_QUEST_MAP = {'strength' : arm_wrestling.QUEST_CONTRACT_ADDRESS, \
                  'luck' : card_game.QUEST_CONTRACT_ADDRESS}
 
 PROF_QUEST_MAP = {'mining' : minning.GOLD_QUEST_CONTRACT_ADDRESS, \
-                  # not supported
                   'gardening' : gardening.QUEST_CONTRACT_ADDRESS, \
                   'fishing' : fishing.QUEST_CONTRACT_ADDRESS_V2, \
                   'foraging' : foraging.QUEST_CONTRACT_ADDRESS_V2}
@@ -32,6 +31,15 @@ def get_max_stat_quest(hero):
       maxStatValue = hero['stats'][stat]
   return STAT_QUEST_MAP[maxStatKey]
 
+def get_quest_type_from_address(address):
+  for k in STAT_QUEST_MAP:
+    if address == STAT_QUEST_MAP[k]:
+      return k
+  for k in PROF_QUEST_MAP:
+    if address == STAT_QUEST_MAP[k]:
+      return k
+  return None
+
 def set_quest(hero, mode):
   if mode == "training":
     return get_max_stat_quest(hero)
@@ -39,7 +47,7 @@ def set_quest(hero, mode):
     profession = hero_utils.parse_stat_genes(hero['info']['statGenes'])['profession']
     return PROF_QUEST_MAP[profession]
   else:
-    return input("Manually input contract address for hero" + str(hero) + ": ")
+    return input("[NOT RECOMMENDED] Manually input contract address for hero" + str(hero) + ": ")
 
 def set_stampot(hero, mode):
   if mode == "training" or mode == "profession":
@@ -55,7 +63,7 @@ def make_new_profile(path_obj, hero_list):
   quest_config = []
   mode = None
   while mode is None:
-    mode = input("Autoconfig your heroes: [training|profession|manual]")
+    mode = input("Autoconfig your heroes: [training|profession|manual] ")
     if mode != 'training' and mode != 'profession' and mode != 'manual':
       mode = None
       logger.error('mode not recognized, please try again.')

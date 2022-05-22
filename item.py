@@ -39,26 +39,46 @@ ABI = \
 def block_explorer_link(txid):
   return 'https://explorer.harmony.one/tx/' + str(txid)
 
-def use_item(w3, hero_id, private_key, gas_price_gwei=35, tx_timeout_seconds=30, rpc_address='https://api.fuzz.fi'):
+def use_item(hero_id, private_key, gas_price_gwei=50, tx_timeout_seconds=30. rpc='https://api.fuzz.fi'):
+  LOGGER.info("using potion")
+  w3 = Web3(Web3.HTTPProvider(rpc)
   account = w3.eth.account.privateKeyToAccount(private_key)
   w3.eth.default_account = account.address
   nonce = w3.eth.getTransactionCount(account.address)
 
   contract_address = Web3.toChecksumAddress(CONTRACT_ADDRESS)
-  contract = w3.eth.contract(contract_address, abi=ABI)
+  contract = w3.eth.contract(contract_address, abi=item.ABI)
 
-  tx = contract.functions.consumeItem(ITEM_CONTRACT_ADDRESS, hero_id).buildTransaction(
-    {'gasPrice': w3.toWei(gas_price_gwei, 'gwei'), 'nonce': nonce})
+  try:
+    tx = contract.functions.consumeItem(DFKSTMNPTN_ADDRESS, hero_id).buildTransaction(
+      {'gasPrice': w3.toWei(gas_price_gwei, 'gwei'), 'nonce': nonce})
+  except:
+    raise
 
-  logger = logging.getLogger('dfkgrind')
-  logger.info("Signing transaction")
-  signed_tx = w3.eth.account.sign_transaction(tx, private_key=private_key)
-  logger.info("Sending transaction " + str(tx))
-  ret = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-  logger.info("Transaction successfully sent !")
-  logger.info("Waiting for transaction " + block_explorer_link(signed_tx.hash.hex()) + " to be mined")
+  ret = None
+  while ret is None:
+    try:
+      w3 = Web3(Web3.HTTPProvider(rpc)
+      LOGGER.info("Signing transaction")
+      signed_tx = w3.eth.account.sign_transaction(tx, private_key=private_key)
 
-  tx_receipt = w3.eth.wait_for_transaction_receipt(transaction_hash=signed_tx.hash, timeout=tx_timeout_seconds,
-                                                     poll_latency=3)
-  logger.info("Transaction mined !")
+      LOGGER.info("Sending transaction " + str(tx))
+      ret = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+      LOGGER.info("Transaction successfully sent !")
+    except Exception as e:
+      LOGGER.exception(str(ex))
+      continue
+
+  tx_receipt = None
+  while tx_receipt is None:
+    try:
+      LOGGER.info("Waiting for transaction " + str(signed_tx.hash.hex()) + " to be mined")
+      tx_receipt = w3.eth.wait_for_transaction_receipt(transaction_hash=signed_tx.hash, \
+                                                       timeout=tx_timeout_seconds, \
+                                                       poll_latency=3)
+      LOGGER.info("Transaction mined !")
+    except:
+      continue
+
+  del private_key
   return tx_receipt

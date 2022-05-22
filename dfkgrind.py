@@ -49,7 +49,7 @@ def get_stamina(hero_id):
   while h is None:
     try:
       rpc = RPC_SERVERS[CURRENT_RPC]
-      h = heroes.human_readable_hero(heroes.get_hero(heroes.SERENDALE_CONTRACT_ADDRESS, hero_id,rpc))
+      h = heroes.human_readable_hero(heroes.get_hero(heroes.SERENDALE_CONTRACT_ADDRESS, hero_id, rpc))
     except Exception as e:
       LOGGER.exception(str(e))
       h = warn_sleep_reset("get hero stamina", 1)
@@ -125,51 +125,30 @@ def end_quest(quest_address, hero_id, private_key, addr):
   del private_key
   return tx_receipt
 
-def use_item(hero_id, private_key, gas_price_gwei=DEFAULT_GAS_PRICE, tx_timeout_seconds=30):
-  LOGGER.info("using potion")
-  w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
-  account = w3.eth.account.privateKeyToAccount(private_key)
-  w3.eth.default_account = account.address
-  nonce = w3.eth.getTransactionCount(account.address)
+def get_quest_status(hero_id):
+  h = heroes.get_hero(heroes.SERENDALE_CONTRACT_ADDRESS, hero_id, RPC_SERVERS[CURRENT_RPC])
+  if h['currentQuest'] == '0x0000000000000000000000000000000000000000':
+    return False
+  else:
+    return True
 
-  contract_address = Web3.toChecksumAddress(item.CONTRACT_ADDRESS)
-  contract = w3.eth.contract(contract_address, abi=item.ABI)
-
-  try:
-    tx = contract.functions.consumeItem(item.DFKSTMNPTN_ADDRESS, hero_id).buildTransaction(
-      {'gasPrice': w3.toWei(gas_price_gwei, 'gwei'), 'nonce': nonce})
-  except:
-    raise
-
-  ret = None
-  while ret is None:
-    try:
-      w3 = Web3(Web3.HTTPProvider(RPC_SERVERS[CURRENT_RPC]))
-      LOGGER.info("Signing transaction")
-      signed_tx = w3.eth.account.sign_transaction(tx, private_key=private_key)
-
-      LOGGER.info("Sending transaction " + str(tx))
-      ret = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-      LOGGER.info("Transaction successfully sent !")
-    except Exception as e:
-      LOGGER.exception(str(ex))
-      ret = warn_sleep_reset("potion usage tx", 1)
-      continue
-
-  tx_receipt = None
-  while tx_receipt is None:
-    try:
-      LOGGER.info("Waiting for transaction " + str(signed_tx.hash.hex()) + " to be mined")
-      tx_receipt = w3.eth.wait_for_transaction_receipt(transaction_hash=signed_tx.hash, \
-                                                       timeout=tx_timeout_seconds, \
-                                                       poll_latency=3)
-      LOGGER.info("Transaction mined !")
-    except:
-      tx_receipt = warn_sleep_reset("potion confirmation", 1)
-      continue
-
-  del private_key
-  return tx_receipt
+def ready_for_pickup(hero, quest_type):
+  time_elapsed = time.now() - hero['quest_start_time']
+  if quest_type == 'fishing' or quest_type == 'foraging':
+    if time_elapsed > 140:
+      return True
+    else:
+      return False
+  elif quest_type == 'mining' or quest_type == 'gardening':
+     if time_elapsed > 250 * 60:
+      return True
+    else:
+      return False
+  else: # training quests
+    if time_elapsed > 100:
+      return True
+    else:
+      return False
 
 def main(config_path, key_path):
   private_key = None # paste in your private key here for competitive autoquesting
@@ -189,21 +168,30 @@ def main(config_path, key_path):
       sys.exit(1)
 
   user_profile = profile.main(config_path, RPC_SERVERS[CURRENT_RPC], addr)
-  for hero in user_profile:
-    begin_quest(hero['quest_address'], hero['hero_id'], private_key, addr)
-  input("Debug wait. Press Enter to continue with end_quest.")
-  for hero in user_profile:
-    end_quest(hero['quest_address'], hero['hero_id'], private_key, addr)
-  '''
   while True:
     try:
-      begin_quest(quest_address, hero_id, private_key, addr)
-      sleep_for(quest_type)
-      end_quest(quest_address, hero_id, private_key, addr)
+      for hero in user_profile:
+        stamina = get_stamina(hero['hero_id'])
+        questing = get_quest_status(hero['hero_id'])
+        quest_type = profile.get_quest_type_from_address(hero['quest_address'])
+        if quest_type == 'mining' or quest_type == 'gardening':
+          logger.error("Mining and Gardening not currently supported. Skipping hero " + hero['hero_id'])
+          pass
+
+        if stamina >= 25 and not questing:
+          begin_quest(hero['quest_address'], hero['hero_id'], private_key, addr)
+          hero['quest_start_time'] = time.now()
+        elif stamina < 25:
+          pass
+        elif questing:
+          if ready_for_pickup(hero, quest_type):
+            end_quest(hero['quest_address'], hero['hero_id'], private_key, addr)
+          else:
+            pass
+      sleep(50)
     except Exception as ex:
       LOGGER.warning("Exception: " + str(ex) + " Restarting Bot.")
       break
-  '''
   return
 
 if __name__ == '__main__':
@@ -211,6 +199,7 @@ if __name__ == '__main__':
   parser.add_argument('--keyfile', help='relative path to keyfile (default: config/keystore.json)', required=False)
   parser.add_argument('--config', help='relative path to config file (default: config/profile.json)', required=False)
   args = vars(parser.parse_args())
+
   key_path = None
   config_path = None
   if not args['config']:
@@ -221,5 +210,6 @@ if __name__ == '__main__':
     key_path = DEFAULT_KEYFILE_LOCATION
   else:
     key_path = args['keyfile']
+
   main(config_path, key_path)
   os.execv(__file__, sys.argv)
