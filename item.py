@@ -39,9 +39,10 @@ ABI = \
 def block_explorer_link(txid):
   return 'https://explorer.harmony.one/tx/' + str(txid)
 
-def use_item(hero_id, private_key, gas_price_gwei=50, tx_timeout_seconds=30. rpc='https://api.fuzz.fi'):
-  LOGGER.info("using potion")
-  w3 = Web3(Web3.HTTPProvider(rpc)
+def use_item(hero_id, private_key, gas_price_gwei=50, tx_timeout_seconds=30, rpc='https://api.fuzz.fi'):
+  logger = logging.getLogger('dfkgrind')
+  logger.info("using potion")
+  w3 = Web3(Web3.HTTPProvider(rpc))
   account = w3.eth.account.privateKeyToAccount(private_key)
   w3.eth.default_account = account.address
   nonce = w3.eth.getTransactionCount(account.address)
@@ -58,25 +59,25 @@ def use_item(hero_id, private_key, gas_price_gwei=50, tx_timeout_seconds=30. rpc
   ret = None
   while ret is None:
     try:
-      w3 = Web3(Web3.HTTPProvider(rpc)
-      LOGGER.info("Signing transaction")
+      w3 = Web3(Web3.HTTPProvider(rpc))
+      logger.info("Signing transaction")
       signed_tx = w3.eth.account.sign_transaction(tx, private_key=private_key)
 
-      LOGGER.info("Sending transaction " + str(tx))
+      logger.info("Sending transaction " + str(tx))
       ret = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-      LOGGER.info("Transaction successfully sent !")
+      logger.info("Transaction successfully sent !")
     except Exception as e:
-      LOGGER.exception(str(ex))
+      logger.exception(str(ex))
       continue
 
   tx_receipt = None
   while tx_receipt is None:
     try:
-      LOGGER.info("Waiting for transaction " + str(signed_tx.hash.hex()) + " to be mined")
+      logger.info("Waiting for transaction " + str(signed_tx.hash.hex()) + " to be mined")
       tx_receipt = w3.eth.wait_for_transaction_receipt(transaction_hash=signed_tx.hash, \
                                                        timeout=tx_timeout_seconds, \
                                                        poll_latency=3)
-      LOGGER.info("Transaction mined !")
+      logger.info("Transaction mined !")
     except:
       continue
 

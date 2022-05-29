@@ -101,6 +101,7 @@ def begin_quest(quest_address, hero_id, private_key, addr):
 
 def end_quest(quest_address, hero_id, private_key, addr):
   quest_result = None
+  tx_receipt = None
   while quest_result is None:
     try:
       LOGGER.info('attempting to complete quest')
@@ -112,11 +113,14 @@ def end_quest(quest_address, hero_id, private_key, addr):
                                                 tx_timeout_seconds=30, \
                                                 rpc_address=RPC_SERVERS[CURRENT_RPC], \
                                                 logger=LOGGER)
-      quest_result = quest_core_v2.parse_complete_quest_receipt(tx_receipt, RPC_SERVERS[CURRENT_RPC])
-      LOGGER.info("Rewards: " + str(quest_result))
+      if tx_receipt:
+        quest_result = quest_core_v2.parse_complete_quest_receipt(tx_receipt, RPC_SERVERS[CURRENT_RPC])
+        LOGGER.info("Rewards: " + str(quest_result))
     except Exception as ex:
       LOGGER.exception(str(ex))
       if "no quest found" in str(ex):
+        break
+      elif "not enough time" in str(ex):
         break
       else:
         quest_result = warn_sleep_reset("completing quest", 1)
@@ -127,20 +131,22 @@ def end_quest(quest_address, hero_id, private_key, addr):
 
 def get_quest_status(hero_id):
   h = heroes.get_hero(heroes.SERENDALE_CONTRACT_ADDRESS, hero_id, RPC_SERVERS[CURRENT_RPC])
-  if h['currentQuest'] == '0x0000000000000000000000000000000000000000':
+  if h['state']['currentQuest'] == '0x0000000000000000000000000000000000000000':
     return False
   else:
     return True
 
 def ready_for_pickup(hero, quest_type):
-  time_elapsed = time.now() - hero['quest_start_time']
+  if hero['quest_start_time'] == 0:
+    return False
+  time_elapsed = time.time() - hero['quest_start_time']
   if quest_type == 'fishing' or quest_type == 'foraging':
     if time_elapsed > 140:
       return True
     else:
       return False
   elif quest_type == 'mining' or quest_type == 'gardening':
-     if time_elapsed > 250 * 60:
+    if time_elapsed > 250 * 60:
       return True
     else:
       return False
@@ -171,6 +177,7 @@ def main(config_path, key_path):
   while True:
     try:
       for hero in user_profile:
+#        hero['quest_start_time'] = 0
         stamina = get_stamina(hero['hero_id'])
         questing = get_quest_status(hero['hero_id'])
         quest_type = profile.get_quest_type_from_address(hero['quest_address'])
@@ -180,15 +187,16 @@ def main(config_path, key_path):
 
         if stamina >= 25 and not questing:
           begin_quest(hero['quest_address'], hero['hero_id'], private_key, addr)
-          hero['quest_start_time'] = time.now()
+ #         hero['quest_start_time'] = time.time()
         elif stamina < 25:
           pass
         elif questing:
-          if ready_for_pickup(hero, quest_type):
-            end_quest(hero['quest_address'], hero['hero_id'], private_key, addr)
-          else:
-            pass
-      sleep(50)
+ #         if ready_for_pickup(hero, quest_type):
+          end_quest(hero['quest_address'], hero['hero_id'], private_key, addr)
+ #          hero['quest_start_time'] = 0
+#          else:
+#            pass
+      time.sleep(50)
     except Exception as ex:
       LOGGER.warning("Exception: " + str(ex) + " Restarting Bot.")
       break
